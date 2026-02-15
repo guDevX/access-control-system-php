@@ -1,0 +1,52 @@
+<?php
+// --- CONFIGURAÇÕES ---
+$host = "localhost";
+$db   = "academia_teste";
+$user = "root";
+$pass = ""; // Senha padrão do XAMPP costuma ser vazia
+
+// IP fictício da sua catraca Toletus na rede
+$ip_catraca = "192.168.1.100"; 
+$porta_catraca = 1001; // Porta comum para Toletus/Actuar
+
+try {
+    $pdo = new PDO("mysql:host=$host;dbname=$db", $user, $pass);
+    
+    // Simulação: CPF que seria lido pela catraca ou teclado
+    $cpf_digitado = "12345678901"; 
+
+    // 1. BUSCA O ALUNO
+    $stmt = $pdo->prepare("SELECT nome, status_pagamento FROM alunos WHERE cpf = :cpf");
+    $stmt->execute(['cpf' => $cpf_digitado]);
+    $aluno = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if ($aluno) {
+        echo "Aluno encontrado: " . $aluno['nome'] . "<br>";
+
+        // 2. VERIFICA O PAGAMENTO
+        if ($aluno['status_pagamento'] == 'EM_DIA') {
+            echo "Pagamento OK! Enviando comando para a catraca...<br>";
+            
+            // 3. COMANDO FÍSICO (Simulado via Socket)
+            $socket = @fsockopen($ip_catraca, $porta_catraca, $errno, $errstr, 2);
+            
+            if ($socket) {
+                // Comando específico da Toletus (exemplo conceitual)
+                fwrite($socket, "LIBERAR_GIRO"); 
+                fclose($socket);
+                echo "<strong>CATRACA DESTRAVADA!</strong>";
+            } else {
+                echo "Erro: Catraca offline (Verifique o IP $ip_catraca).";
+            }
+
+        } else {
+            echo "<strong>ACESSO NEGADO:</strong> Mensalidade em atraso.";
+        }
+    } else {
+        echo "Erro: Aluno não cadastrado.";
+    }
+
+} catch (PDOException $e) {
+    echo "Falha na conexão com o banco: " . $e->getMessage();
+}
+?>
