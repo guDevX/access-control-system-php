@@ -1,40 +1,137 @@
 <?php
-// --- CONFIGURAÇÕES ---
-$host = "localhost";
-$db   = "academia_teste";
-$user = "root";
-$pass = ""; // Senha padrão do XAMPP costuma ser vazia
+session_start();
 
-// IP fictício da sua catraca Toletus na rede
-$ip_catraca = "192.168.1.100"; 
-$porta_catraca = 1001; // Porta comum para Toletus/Actuar
+/* ================================
+   CONFIGURAÇÃO BANCO DE DADOS
+================================ */
+$pdo = new PDO(
+    "mysql:host=localhost;dbname=access_control;charset=utf8",
+    "root",
+    "",
+    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+);
 
-try {
-    $pdo = new PDO("mysql:host=$host;dbname=$db", $user, $pass);
-    
-    // Simulação: CPF que seria lido pela catraca ou teclado
-    $cpf_digitado = "12345678901"; 
+/* ================================
+   FUNÇÕES
+================================ */
 
-    // 1. BUSCA O ALUNO
-    $stmt = $pdo->prepare("SELECT nome, status_pagamento FROM alunos WHERE cpf = :cpf");
-    $stmt->execute(['cpf' => $cpf_digitado]);
-    $aluno = $stmt->fetch(PDO::FETCH_ASSOC);
+function findUserByEmail($email, $pdo) {
+    $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ?");
+    $stmt->execute([$email]);
+    return $stmt->fetch(PDO::FETCH_ASSOC);
+}
 
-    if ($aluno) {
-        echo "Aluno encontrado: " . $aluno['nome'] . "<br>";
+function getUserPermissions($userId, $pdo) {
+    $stmt = $pdo->prepare("
+        SELECT p.name 
+        FROM permissions p
+        JOIN role_permissions rp ON rp.permission_id = p.id
+        JOIN users u ON u.role_id = rp.role_id
+        WHERE u.id = ?
+    ");
+    $stmt->execute([$userId]);
+    return $stmt->fetchAll(PDO::FETCH_COLUMN);
+}
 
-        // 2. VERIFICA O PAGAMENTO
-        if ($aluno['status_pagamento'] == 'EM_DIA') {
-            echo "Pagamento OK! Enviando comando para a catraca...<br>";
-            
-            // 3. COMANDO FÍSICO (Simulado via Socket)
-            $socket = @fsockopen($ip_catraca, $porta_catraca, $errno, $errstr, 2);
-            
-            if ($socket) {
-                // Comando específico da Toletus (exemplo conceitual)
-                fwrite($socket, "LIBERAR_GIRO"); 
-                fclose($socket);
-                echo "<strong>CATRACA DESTRAVADA!</strong>";
+function canAccess($userId, $permission, $pdo) {
+
+    $stmt = $pdo->prepare("SELECT active FROM users WHERE id = ?");
+    $stmt->execute([$userId]);
+    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$user || !$user['active']) {
+        return false;
+    }
+
+    $permissions = getUserPermissions($userId, $pdo);
+    return in_array($permission, $permissions);
+}
+
+function logAccess($userId, $action, $status, $pdo) {
+    $stmt = $pdo->prepare("
+        INSERT INTO access_logs (user_id, action, status, ip)
+        VALUES (?, ?, ?, ?)
+    ");
+
+    $stmt->execute([
+        $userId,
+        $action,
+        $status,
+        $_SERVER['REMOTE_ADDR']
+    ]);
+}
+
+/* ================================
+   LOGOUT
+================================ */
+if (isset($_GET['logout'])) {
+    session_destroy();
+    header("Location: access_system.php");
+    exit;
+}
+
+/* ================================
+   LOGIN
+================================ */
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
+    $user = findUserByEmail($_POST['email'], $pdo);
+
+    if ($user && password_verify($_POST['password'], $user['password'])) {
+        $_SESSION['user_id'] = $user['id'];
+        header("Location: access_system.php");
+        exit;
+    } else {
+        $error = "Login inválido.";
+    }
+}
+
+/* ================================
+   DASHBOARD PROTEGIDO
+================================ */
+?>
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Access Control System</title>
+</head>
+<body>
+
+<?php if (!isset($_SESSION['user_id'])): ?>
+
+    <h2>Login</h2>
+    <?php if (isset($error)) echo "<p style='color:red;'>$error</p>"; ?>
+
+    <form method="POST">
+        <input type="email" name="email" placeholder="Email" required><br><br>
+        <input type="password" name="password" placeholder="Senha" required><br><br>
+        <button type="submit">Entrar</button>
+    </form>
+
+<?php else: ?>
+
+    <?php
+        $userId = $_SESSION['user_id'];
+
+        if (canAccess($userId, 'view_dashboard', $pdo)) {
+            logAccess($userId, 'view_dashboard', 'allowed', $pdo);
+            echo "<h1>Dashboard</h1>";
+            echo "<p>Acesso autorizado!</p>";
+        } else {
+            logAccess($userId, 'view_dashboard', 'denied', $pdo);
+            http_response_code(403);
+            echo "<h1>Acesso Negado</h1>";
+        }
+    ?>
+
+    <br>
+    <a href="?logout=true">Sair</a>
+
+<?php endif; ?>
+
+</body>
+</html>                echo "<strong>CATRACA DESTRAVADA!</strong>";
             } else {
                 echo "Erro: Catraca offline (Verifique o IP $ip_catraca).";
             }
