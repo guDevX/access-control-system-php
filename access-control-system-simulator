@@ -1,39 +1,30 @@
-<?php
-session_start();
+CREATE TABLE roles (id INT PRIMARY KEY AUTO_INCREMENT, name VARCHAR(50));
+CREATE TABLE permissions (id INT PRIMARY KEY AUTO_INCREMENT, name VARCHAR(50));
+CREATE TABLE role_permissions (role_id INT, permission_id INT);
 
-/* ================================
-   CONFIGURAÇÃO BANCO DE DADOS
-================================ */
-$pdo = new PDO(
-    "mysql:host=localhost;dbname=access_control;charset=utf8",
-    "root",
-    "",
-    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+CREATE TABLE users (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    email VARCHAR(255) UNIQUE,
+    password VARCHAR(255),
+    role_id INT,
+    active TINYINT(1) DEFAULT 1
 );
 
-/* ================================
-   FUNÇÕES
-================================ */
+CREATE TABLE access_logs (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT,
+    action VARCHAR(50),
+    status VARCHAR(20),
+    ip VARCHAR(45),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-function findUserByEmail($email, $pdo) {
-    $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ?");
-    $stmt->execute([$email]);
-    return $stmt->fetch(PDO::FETCH_ASSOC);
-}
-
-function getUserPermissions($userId, $pdo) {
-    $stmt = $pdo->prepare("
-        SELECT p.name 
-        FROM permissions p
-        JOIN role_permissions rp ON rp.permission_id = p.id
-        JOIN users u ON u.role_id = rp.role_id
-        WHERE u.id = ?
-    ");
-    $stmt->execute([$userId]);
-    return $stmt->fetchAll(PDO::FETCH_COLUMN);
-}
-
-function canAccess($userId, $permission, $pdo) {
+-- Inserir dados de teste (A senha é '123456')
+INSERT INTO roles (name) VALUES ('Admin');
+INSERT INTO permissions (name) VALUES ('view_dashboard');
+INSERT INTO role_permissions VALUES (1, 1);
+INSERT INTO users (email, password, role_id, active) 
+VALUES ('teste@teste.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 1, 1);
 
     $stmt = $pdo->prepare("SELECT active FROM users WHERE id = ?");
     $stmt->execute([$userId]);
